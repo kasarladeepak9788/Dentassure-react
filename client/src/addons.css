@@ -1,0 +1,18 @@
+/* DENTASSURE 360 add-on module styles */
+.addon-layout{display:grid;grid-template-columns:minmax(260px,.75fr) minmax(0,1.5fr);gap:18px;align-items:start;margin-top:18px}
+.addon-form-card,.addon-list-card{min-width:0;padding:20px}
+.addon-form{display:grid;gap:14px;margin-top:16px}
+.addon-form label{display:grid;gap:7px;font-size:13px;font-weight:650;color:#384152}
+.addon-form input,.addon-form select,.addon-list-card select{width:100%;min-width:0;border:1px solid #d9dee8;border-radius:9px;padding:10px 11px;background:#fff;color:#202938;font:inherit}
+.addon-form input:focus,.addon-form select:focus,.addon-list-card select:focus{outline:2px solid #f2bfd5;border-color:#cf2766}
+.addon-form .primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;margin-top:4px}
+.addon-list-card .toolbar{margin:12px 0}
+.addon-list-card .table-wrap{overflow:auto}
+.addon-list-card table{width:100%;border-collapse:collapse;white-space:nowrap}
+.addon-list-card th,.addon-list-card td{padding:11px 12px;text-align:left;border-bottom:1px solid #edf0f5;font-size:13px}
+.addon-list-card th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#687386;background:#f8f9fc}
+.addon-list-card td{color:#333d4d}
+.addon-list-card td select{min-width:130px;padding:7px 8px;font-size:12px}
+.addon-note{grid-column:1/-1;border:1px solid #f0d9a8;background:#fffaf0;color:#72541a;padding:13px 15px;border-radius:10px;font-size:12px;line-height:1.55}
+.addon-note b{margin-right:4px}
+@media(max-width:900px){.addon-layout{grid-template-columns:1fr}.addon-note{grid-column:auto}}
