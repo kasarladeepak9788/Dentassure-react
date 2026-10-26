@@ -275,8 +275,12 @@ function Staff({section,setToast,user,employeeDetails}){
  if(['wfh','tasks','notifications','activity'].includes(section))return <AddonModule section={section} role="staff" user={user} setToast={setToast}/>;
  const currentUserKey=userKeyFromUser(user);
  const userTasks=initialTasks.map(t=>({...t,employee:user.name}));
- const [checkedIn,setCheckedIn]=useState(()=>localStorage.getItem(`dentassure_checked_in_${user.code}`)==='true');
- const [checkInTime,setCheckInTime]=useState(()=>localStorage.getItem(`dentassure_checkin_time_${user.code}`)||'');
+ const [checkedIn,setCheckedIn]=useState(false);
+ const [checkInTime,setCheckInTime]=useState('');
+ const [checkOutTime,setCheckOutTime]=useState('');
+ const [workingHours,setWorkingHours]=useState('—');
+ const [biometricLoading,setBiometricLoading]=useState(true);
+ const [biometricError,setBiometricError]=useState('');
  const [clock,setClock]=useState(new Date());
  const [leaveType,setLeaveType]=useState('Casual Leave');
  const [fromDate,setFromDate]=useState('');
@@ -285,8 +289,35 @@ function Staff({section,setToast,user,employeeDetails}){
  const [leaveRefresh,setLeaveRefresh]=useState(0);
  useEffect(()=>{const t=setInterval(()=>setClock(new Date()),1000);return()=>clearInterval(t)},[]);
  useEffect(()=>{const refresh=()=>setLeaveRefresh(x=>x+1);window.addEventListener('dentassure-leave-update',refresh);return()=>window.removeEventListener('dentassure-leave-update',refresh)},[]);
- const toggleAttendance=()=>{const today=new Date().toISOString().slice(0,10);const records=getAttendanceRecords();const existing=records.find(x=>x.code===user.code&&x.date===today);if(checkedIn){const now=new Date();const start=existing?.checkInTimestamp?new Date(existing.checkInTimestamp):null;const hours=start?((now-start)/3600000):0;const updated=records.map(x=>x.code===user.code&&x.date===today?{...x,checkOut:now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),checkOutTimestamp:now.toISOString(),workingHours:hours?`${Math.floor(hours)}h ${Math.floor((hours%1)*60)}m`:'—',status:'Present',logoutStatus:logoutIndicator(now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})).label,earlyLogoutMinutes:logoutIndicator(now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})).minutes}:x);saveAttendanceRecords(updated);localStorage.removeItem(`dentassure_checked_in_${user.code}`);localStorage.removeItem(`dentassure_checkin_time_${user.code}`);setCheckedIn(false);setCheckInTime('');addNotification('management','Attendance update',`${user.name} checked out`);setToast('Checked out successfully.')}else{const now=new Date();const record={code:user.code,employeeName:user.name,date:today,checkIn:now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),checkInTimestamp:now.toISOString(),checkOut:'',workingHours:'Active',status:'Present',arrivalStatus:arrivalIndicator(now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})).label,lateMinutes:arrivalIndicator(now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})).minutes};saveAttendanceRecords([...records.filter(x=>!(x.code===user.code&&x.date===today)),record]);localStorage.setItem(`dentassure_checked_in_${user.code}`,'true');localStorage.setItem(`dentassure_checkin_time_${user.code}`,record.checkIn);setCheckedIn(true);setCheckInTime(record.checkIn);addNotification('management','Attendance update',`${user.name} checked in at ${record.checkIn}`);setToast('Checked in successfully.')}};
-if(section==='attendance')return <><SectionHeader title="Attendance" sub="Manage your daily office work session."/><div className="attendance card"><div className="attendance-icon"><Clock3 size={30}/></div><div><span className="eyebrow">CURRENT STATUS</span><h2>{checkedIn?'CHECKED IN':'CHECKED OUT'}</h2><p>{checkedIn?'Office Wi-Fi connected • Work session started.':'Work session closed successfully.'}</p></div><div className="clock">{clock.toLocaleTimeString()}</div><button className="primary" onClick={toggleAttendance}>{checkedIn?'CHECK OUT':'CHECK IN'}</button></div></>;
+ const API_BASE=import.meta.env.VITE_API_BASE_URL||'http://localhost:5000';
+ useEffect(()=>{
+   let active=true;
+   const loadBiometricAttendance=async()=>{
+     try{
+       const response=await fetch(`${API_BASE}/api/biometric/attendance/${encodeURIComponent(user.code)}`);
+       if(!response.ok) throw new Error(`Attendance API returned ${response.status}`);
+       const result=await response.json();
+       if(!result.success) throw new Error(result.message||'Unable to load attendance');
+       if(!active)return;
+       const record=result.attendance;
+       if(!record){setCheckedIn(false);setCheckInTime('');setCheckOutTime('');setWorkingHours('—');}
+       else{
+         const checkIn=record.checkIn||'';
+         const checkOut=record.checkOut||'';
+         setCheckInTime(checkIn);setCheckOutTime(checkOut);
+         setCheckedIn(Boolean(checkIn&&!checkOut));
+         const numericHours=Number(record.workingHours||0);
+         setWorkingHours(checkOut&&Number.isFinite(numericHours)?`${Math.floor(numericHours)}h ${Math.round((numericHours%1)*60)}m`:checkIn&&!checkOut?'In progress':'—');
+       }
+       setBiometricError('');
+     }catch(error){if(active)setBiometricError(error.message||'Attendance sync failed');}
+     finally{if(active)setBiometricLoading(false);}
+   };
+   loadBiometricAttendance();
+   const timer=setInterval(loadBiometricAttendance,10000);
+   return()=>{active=false;clearInterval(timer)};
+ },[API_BASE,user.code]);
+if(section==='attendance')return <><SectionHeader title="Attendance" sub="Attendance updates automatically from Secureye / ONtime biometric scans."/><div className="attendance card"><div className="attendance-icon"><Clock3 size={30}/></div><div><span className="eyebrow">BIOMETRIC ATTENDANCE</span><h2>{biometricLoading?'SYNCING...':checkedIn?'CHECKED IN':checkOutTime?'CHECKED OUT':'NOT CHECKED IN'}</h2><p>{biometricError?`Unable to sync: ${biometricError}`:'Attendance is synchronized from Secureye / ONtime.'}</p></div><div><p><strong>Check In:</strong> {checkInTime||'—'}</p><p><strong>Check Out:</strong> {checkOutTime||'—'}</p><p><strong>Working Hours:</strong> {workingHours}</p></div><div className="clock">{clock.toLocaleTimeString()}</div><span className={'status '+(biometricError?'red':biometricLoading?'yellow':'green')}>{biometricLoading?'Syncing':biometricError?'Sync Error':'Biometric Mode'}</span></div></>;
 if(section==='leave'){
  const myLeaves=getLeaveRequests().filter(x=>x.employeeCode===user.code);
  const submitLeave=e=>{e.preventDefault();if(!fromDate||!toDate||!reason.trim()){setToast('Please complete the leave request');return}const list=getLeaveRequests();list.unshift({id:Date.now(),employeeCode:user.code,employeeName:user.name,leaveType,fromDate,toDate,reason:reason.trim(),status:'Pending',createdAt:new Date().toISOString()});saveLeaveRequests(list);addNotification('management','New leave request',`${user.name} requested ${leaveType} from ${fromDate} to ${toDate}`);setFromDate('');setToDate('');setReason('');setLeaveRefresh(x=>x+1);setToast('Leave request submitted')};
@@ -297,7 +328,7 @@ if(section==='chat')return <TeamChat currentUserKey={currentUserKey} setToast={s
 if(section==='files')return <><SectionHeader title="Files & Documents" sub="Documents assigned by management."/><div className="card file-list">{files.map(f=><div className="file-row" key={f.name}><div className="file-icon"><FileText size={20}/></div><div><b>{f.name} {f.new&&<span className="new">NEW</span>}</b><small>{f.date} • {f.size} • Uploaded by Management</small></div><span className="file-project">{f.project}</span><button onClick={()=>setToast('File opened')}>OPEN</button></div>)}</div></>;
 if(section==='profile')return <MyProfile user={user} details={employeeDetails}/>;
 if(section==='activity')return <><SectionHeader title="Activity & Updates" sub="Recent activity from your workspace."/><div className="card"><div className="activity-row"><div className="activity-icon">📎</div><div><b>New file uploaded by Management</b><small>Employee Portal Requirements</small></div></div><div className="activity-row"><div className="activity-icon">💬</div><div><b>New Team Chat message</b><small>Management sent you a message</small></div></div></div></>;
-if(section==='salary')return <Salary user={user} details={employeeDetails}/>;return <><SectionHeader title={<>Welcome, <span>{user.name} 👋</span></>} sub="Here is your work overview for today."/><div className="stats"><Stat icon="✓" value={checkedIn?'CHECKED IN':'CHECKED OUT'} label="Attendance" type="teal"/><Stat icon="🎯" value="3" label="My Tasks" type="pink"/><Stat icon="📁" value="2" label="My Projects" type="yellow"/><Stat icon="📎" value="3" label="My Files" type="teal"/></div><div className="two-col"><div className="card"><div className="card-title"><h3>Today's Attendance</h3><span>{clock.toLocaleDateString()}</span></div><div className="attendance-mini"><div><b>{checkedIn?(checkInTime||'—'):'—'}</b><small>Check-in time</small></div><button className="primary" onClick={toggleAttendance}>{checkedIn?'CHECK OUT':'CHECK IN'}</button></div></div><div className="card"><div className="card-title"><h3>Recent Activity</h3><span>Updates</span></div><div className="activity-row"><div className="activity-icon">📎</div><div><b>New file uploaded</b><small>Employee Portal Requirements</small></div></div><div className="activity-row"><div className="activity-icon">💬</div><div><b>New chat message</b><small>Management sent you a message</small></div></div></div></div></>}
+if(section==='salary')return <Salary user={user} details={employeeDetails}/>;return <><SectionHeader title={<>Welcome, <span>{user.name} 👋</span></>} sub="Here is your work overview for today."/><div className="stats"><Stat icon="✓" value={checkedIn?'CHECKED IN':'CHECKED OUT'} label="Attendance" type="teal"/><Stat icon="🎯" value="3" label="My Tasks" type="pink"/><Stat icon="📁" value="2" label="My Projects" type="yellow"/><Stat icon="📎" value="3" label="My Files" type="teal"/></div><div className="two-col"><div className="card"><div className="card-title"><h3>Today's Attendance</h3><span>{clock.toLocaleDateString()}</span></div><div className="attendance-mini"><div><b>{checkInTime||'—'}</b><small>Check-in time</small></div><div><b>{checkOutTime||'—'}</b><small>Check-out time</small></div><div><b>{workingHours}</b><small>Working hours</small></div><span className={'status '+(biometricError?'red':checkedIn?'green':'gray')}>{biometricLoading?'Syncing':biometricError?'Sync Error':checkedIn?'Checked In':checkOutTime?'Checked Out':'Not Checked In'}</span></div></div><div className="card"><div className="card-title"><h3>Recent Activity</h3><span>Updates</span></div><div className="activity-row"><div className="activity-icon">📎</div><div><b>New file uploaded</b><small>Employee Portal Requirements</small></div></div><div className="activity-row"><div className="activity-icon">💬</div><div><b>New chat message</b><small>Management sent you a message</small></div></div></div></div></>}
 
 function TeamChat({currentUserKey,setToast}){
  const currentUser=getUserByKey(currentUserKey);
@@ -482,9 +513,7 @@ function App(){
 const currentPath = window.location.pathname.replace(/\/+$/, '') || '/';
 
 createRoot(document.getElementById('root')).render(
-  currentPath === '/careers'
-    ? <CareersPage />
-    : currentPath === '/candidate-portal' || currentPath === '/candidate'
-      ? <CandidatePortal />
-      : <App />
+  currentPath === '/careers' ? <CareersPage /> :
+  currentPath === '/candidate-portal' || currentPath === '/candidate' ? <CandidatePortal /> :
+  <App />
 );

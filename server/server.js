@@ -6,6 +6,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import biometricRoutes from './biometric.js';
+import onboardingRoutes from './onboarding.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -25,7 +27,12 @@ app.use((req, res, next) => {
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+// =====================================================
+// BIOMETRIC INTEGRATION
+// =====================================================
 
+app.use('/api/biometric', biometricRoutes);
+app.use('/api/onboarding', onboardingRoutes);
 // =====================================================
 // MYSQL CONNECTION
 // =====================================================
@@ -1067,18 +1074,17 @@ app.get('/api/recruitment/candidate/application', async (req, res) => {
 
 app.get('/api/recruitment/applications', async (req, res) => {
     try {
-        const [candidates] = await pool.query(`
-            SELECT
-                c.*,
-                a.username,
-                a.account_status,
-                a.is_temporary,
-                a.employee_id AS account_employee_id
-            FROM recruitment_candidates c
-            LEFT JOIN recruitment_candidate_accounts a
-                ON a.application_id = c.id
-            ORDER BY c.applied_at DESC
-        `);
+       const [candidates] = await pool.query(`
+    SELECT
+        c.*,
+        a.username,
+        a.account_status,
+        a.is_temporary
+    FROM recruitment_candidates c
+    LEFT JOIN recruitment_candidate_accounts a
+        ON a.application_id = c.id
+    ORDER BY c.applied_at DESC
+`);
 
         return res.json({
             success: true,

@@ -78,4 +78,4 @@ INSERT IGNORE INTO recruitment_roles (
     'SQL, MySQL, Database Management',
     'B.Tech or relevant qualification',
     'Published'
-);
+);node server.js
